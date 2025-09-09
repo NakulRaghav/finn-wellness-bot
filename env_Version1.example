@@ -1,0 +1,25 @@
+# LLM
+USE_OLLAMA=true
+OLLAMA_MODEL=llama3.1:8b
+OLLAMA_URL=http://localhost:11434
+
+# Optional OpenAI fallback
+# OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# Embeddings / Index
+EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+INDEX_DIR=.data/index
+DOCS_PATH=.data/docs.jsonl
+
+# Memory & Logs
+MEMORY_DB_PATH=.data/state.db
+LOG_PII=false
+
+# RAG
+TOP_K=4
+OOS_THRESHOLD=0.28
+
+# Safety
+ENABLE_PII_REDACTION=true
+ENABLE_SAFETY_FILTERS=true

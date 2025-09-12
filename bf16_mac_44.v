@@ -48,7 +48,7 @@ module BF16MAC_44 (
     // Internal registers
     reg [3:0] element_index_44;        // Current element being processed (0-11)
     reg [15:0] accumulator_44;         // Running sum
-    reg [3:0] pipeline_counter_44;     // Pipeline delay counter
+    reg [5:0] total_cycles_44;         // Total cycles for operation
     reg computation_active_44;
     
     // Instantiate BF16 multiplier
@@ -80,143 +80,92 @@ module BF16MAC_44 (
             current_state_44 <= IDLE_44;
             element_index_44 <= 4'h0;
             accumulator_44 <= 16'h0000;  // Initialize to +0.0 in BF16
-            pipeline_counter_44 <= 4'h0;
+            total_cycles_44 <= 6'h0;
             computation_active_44 <= 1'b0;
             cycle_count_44 <= 4'h0;
             done_44 <= 1'b0;
             dot_product_44 <= 16'h0000;
+            mul_valid_in_44 <= 1'b0;
+            add_valid_in_44 <= 1'b0;
         end else begin
-            current_state_44 <= next_state_44;
-            
-            // Cycle counter for debugging
-            if (computation_active_44) begin
-                cycle_count_44 <= cycle_count_44 + 1;
-            end else if (start_44) begin
-                cycle_count_44 <= 4'h1;
-            end
-            
             case (current_state_44)
                 IDLE_44: begin
                     if (start_44) begin
                         element_index_44 <= 4'h0;
                         accumulator_44 <= 16'h0000;  // +0.0 in BF16
-                        pipeline_counter_44 <= 4'h0;
+                        total_cycles_44 <= 6'h0;
                         computation_active_44 <= 1'b1;
                         done_44 <= 1'b0;
+                        cycle_count_44 <= 4'h1;
+                        current_state_44 <= MULTIPLY_44;
+                        
+                        // Start first multiplication
+                        mul_a_44 <= a_elements_44[0];
+                        mul_b_44 <= b_elements_44[0];
+                        mul_valid_in_44 <= 1'b1;
                     end else begin
                         computation_active_44 <= 1'b0;
                         cycle_count_44 <= 4'h0;
+                        mul_valid_in_44 <= 1'b0;
+                        add_valid_in_44 <= 1'b0;
                     end
                 end
                 
                 MULTIPLY_44: begin
-                    // Send multiplication inputs to pipeline
-                    if (element_index_44 < 4'd12 && pipeline_counter_44 < 4'd12) begin
-                        pipeline_counter_44 <= pipeline_counter_44 + 1;
-                    end
+                    cycle_count_44 <= cycle_count_44 + 1;
+                    mul_valid_in_44 <= 1'b0;  // Only pulse for one cycle
                     
-                    // Wait for all multiplications to complete
-                    if (pipeline_counter_44 >= 4'd12) begin
-                        element_index_44 <= 4'h0;  // Reset for accumulation phase
-                        pipeline_counter_44 <= 4'h0;
+                    // Wait for multiplication to complete (3 cycles)
+                    if (mul_valid_out_44) begin
+                        current_state_44 <= ACCUMULATE_44;
+                        // Start accumulation
+                        add_a_44 <= accumulator_44;
+                        add_b_44 <= mul_result_44;
+                        add_valid_in_44 <= 1'b1;
+                        total_cycles_44 <= 6'h0;  // Reset cycle counter for add
                     end
                 end
                 
                 ACCUMULATE_44: begin
-                    // Process accumulation results as they come out of adder pipeline
+                    cycle_count_44 <= cycle_count_44 + 1;
+                    add_valid_in_44 <= 1'b0;  // Only pulse for one cycle
+                    total_cycles_44 <= total_cycles_44 + 1;
+                    
+                    // Wait for addition to complete (3 cycles)  
                     if (add_valid_out_44) begin
                         accumulator_44 <= add_result_44;
                         element_index_44 <= element_index_44 + 1;
-                    end
-                    
-                    // Check if all accumulations are complete
-                    if (element_index_44 >= 4'd12) begin
-                        dot_product_44 <= accumulator_44;
-                        done_44 <= 1'b1;
-                        computation_active_44 <= 1'b0;
+                        
+                        if (element_index_44 >= 4'd11) begin
+                            // All elements processed
+                            current_state_44 <= DONE_44;
+                            dot_product_44 <= add_result_44;
+                            done_44 <= 1'b1;
+                            computation_active_44 <= 1'b0;
+                        end else begin
+                            // Process next element
+                            current_state_44 <= MULTIPLY_44;
+                            mul_a_44 <= a_elements_44[element_index_44 + 1];
+                            mul_b_44 <= b_elements_44[element_index_44 + 1];
+                            mul_valid_in_44 <= 1'b1;
+                        end
                     end
                 end
                 
                 DONE_44: begin
                     if (!start_44) begin
                         done_44 <= 1'b0;
+                        current_state_44 <= IDLE_44;
                     end
                 end
                 
                 default: begin
-                    // Should never reach here
+                    current_state_44 <= IDLE_44;
                 end
             endcase
         end
     end
     
-    // State machine combinational logic
-    always @(*) begin
-        case (current_state_44)
-            IDLE_44: begin
-                if (start_44) begin
-                    next_state_44 = MULTIPLY_44;
-                end else begin
-                    next_state_44 = IDLE_44;
-                end
-            end
-            
-            MULTIPLY_44: begin
-                if (pipeline_counter_44 >= 4'd12) begin
-                    next_state_44 = ACCUMULATE_44;
-                end else begin
-                    next_state_44 = MULTIPLY_44;
-                end
-            end
-            
-            ACCUMULATE_44: begin
-                if (element_index_44 >= 4'd12) begin
-                    next_state_44 = DONE_44;
-                end else begin
-                    next_state_44 = ACCUMULATE_44;
-                end
-            end
-            
-            DONE_44: begin
-                if (!start_44) begin
-                    next_state_44 = IDLE_44;
-                end else begin
-                    next_state_44 = DONE_44;
-                end
-            end
-            
-            default: begin
-                next_state_44 = IDLE_44;
-            end
-        endcase
-    end
-    
-    // Multiplier input control
-    always @(*) begin
-        if (current_state_44 == MULTIPLY_44 && pipeline_counter_44 < 4'd12) begin
-            mul_a_44 = a_elements_44[pipeline_counter_44];
-            mul_b_44 = b_elements_44[pipeline_counter_44];
-            mul_valid_in_44 = 1'b1;
-        end else begin
-            mul_a_44 = 16'h0000;
-            mul_b_44 = 16'h0000;
-            mul_valid_in_44 = 1'b0;
-        end
-    end
-    
-    // Adder input control - accumulate products as they become available
-    always @(*) begin
-        if (current_state_44 == ACCUMULATE_44 && mul_valid_out_44) begin
-            add_a_44 = accumulator_44;    // Current accumulator value
-            add_b_44 = mul_result_44;     // New product to add
-            add_valid_in_44 = 1'b1;
-        end else begin
-            add_a_44 = 16'h0000;
-            add_b_44 = 16'h0000;
-            add_valid_in_44 = 1'b0;
-        end
-    end
-
 endmodule
 
 // Top-level module for dot product computation

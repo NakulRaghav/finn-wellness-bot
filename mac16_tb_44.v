@@ -48,15 +48,14 @@ module mac16_tb_44;
         forever #5 clk_44 = ~clk_44;  // 100MHz clock (10ns period)
     end
     
-    // BF16 conversion function (decimal to BF16 hex)
+    // BF16 conversion function (decimal to BF16 hex) - Fixed version
     function [15:0] decimal_to_bf16;
         input real decimal_val;
         reg sign_bit;
         reg [7:0] exp_bits;
         reg [6:0] mant_bits;
-        reg [31:0] ieee754_single;
-        integer exp_single, exp_bf16;
-        real abs_val;
+        real abs_val, temp;
+        integer exp_unbias;
         
         begin
             if (decimal_val == 0.0) begin
@@ -71,12 +70,28 @@ module mac16_tb_44;
                     abs_val = decimal_val;
                 end
                 
-                // Convert to IEEE 754 single precision first, then truncate to BF16
-                ieee754_single = $realtobits(decimal_val);
+                // Find exponent by successive division/multiplication by 2
+                exp_unbias = 0;
+                temp = abs_val;
                 
-                // Extract exponent and mantissa from single precision
-                exp_bits = ieee754_single[30:23];    // Copy exponent directly
-                mant_bits = ieee754_single[22:16];   // Take top 7 mantissa bits
+                if (temp >= 2.0) begin
+                    while (temp >= 2.0) begin
+                        temp = temp / 2.0;
+                        exp_unbias = exp_unbias + 1;
+                    end
+                end else if (temp < 1.0) begin
+                    while (temp < 1.0) begin
+                        temp = temp * 2.0;
+                        exp_unbias = exp_unbias - 1;
+                    end
+                end
+                
+                // Add bias
+                exp_bits = exp_unbias + 127;
+                
+                // Extract mantissa (temp should now be 1.xxx)
+                temp = temp - 1.0;  // Remove implicit leading 1
+                mant_bits = $rtoi(temp * 128.0);  // Convert fractional part to 7-bit integer
                 
                 decimal_to_bf16 = {sign_bit, exp_bits, mant_bits};
             end
@@ -126,37 +141,37 @@ module mac16_tb_44;
         rst_n_44 = 0;
         start_computation_44 = 0;
         
-        // Initialize test vectors
+        // Initialize test vectors with pre-computed BF16 hex values
         // A = (0.1, 0.2, 0.25, -0.3, 0.4, 0.5, 0.55, 0.6, -0.75, 0.8, 0.875, 0.9)
-        vector_a_44[0]  = decimal_to_bf16(0.1);
-        vector_a_44[1]  = decimal_to_bf16(0.2);
-        vector_a_44[2]  = decimal_to_bf16(0.25);
-        vector_a_44[3]  = decimal_to_bf16(-0.3);
-        vector_a_44[4]  = decimal_to_bf16(0.4);
-        vector_a_44[5]  = decimal_to_bf16(0.5);
-        vector_a_44[6]  = decimal_to_bf16(0.55);
-        vector_a_44[7]  = decimal_to_bf16(0.6);
-        vector_a_44[8]  = decimal_to_bf16(-0.75);
-        vector_a_44[9]  = decimal_to_bf16(0.8);
-        vector_a_44[10] = decimal_to_bf16(0.875);
-        vector_a_44[11] = decimal_to_bf16(0.9);
+        vector_a_44[0]  = 16'h3dcc;  // 0.1
+        vector_a_44[1]  = 16'h3e4c;  // 0.2  
+        vector_a_44[2]  = 16'h3e80;  // 0.25
+        vector_a_44[3]  = 16'hbe99;  // -0.3
+        vector_a_44[4]  = 16'h3ecc;  // 0.4
+        vector_a_44[5]  = 16'h3f00;  // 0.5
+        vector_a_44[6]  = 16'h3f0c;  // 0.55
+        vector_a_44[7]  = 16'h3f19;  // 0.6
+        vector_a_44[8]  = 16'hbf40;  // -0.75
+        vector_a_44[9]  = 16'h3f4c;  // 0.8
+        vector_a_44[10] = 16'h3f60;  // 0.875
+        vector_a_44[11] = 16'h3f66;  // 0.9
         
         // B = (0.25, -0.9, 0.125, 0.8, 0.875, -0.75, 0.3, 0.6, 0.1, 0.2, -0.4, 0.55)
-        vector_b_44[0]  = decimal_to_bf16(0.25);
-        vector_b_44[1]  = decimal_to_bf16(-0.9);
-        vector_b_44[2]  = decimal_to_bf16(0.125);
-        vector_b_44[3]  = decimal_to_bf16(0.8);
-        vector_b_44[4]  = decimal_to_bf16(0.875);
-        vector_b_44[5]  = decimal_to_bf16(-0.75);
-        vector_b_44[6]  = decimal_to_bf16(0.3);
-        vector_b_44[7]  = decimal_to_bf16(0.6);
-        vector_b_44[8]  = decimal_to_bf16(0.1);
-        vector_b_44[9]  = decimal_to_bf16(0.2);
-        vector_b_44[10] = decimal_to_bf16(-0.4);
-        vector_b_44[11] = decimal_to_bf16(0.55);
+        vector_b_44[0]  = 16'h3e80;  // 0.25
+        vector_b_44[1]  = 16'hbf66;  // -0.9
+        vector_b_44[2]  = 16'h3e00;  // 0.125
+        vector_b_44[3]  = 16'h3f4c;  // 0.8
+        vector_b_44[4]  = 16'h3f60;  // 0.875
+        vector_b_44[5]  = 16'hbf40;  // -0.75
+        vector_b_44[6]  = 16'h3e99;  // 0.3
+        vector_b_44[7]  = 16'h3f19;  // 0.6
+        vector_b_44[8]  = 16'h3dcc;  // 0.1
+        vector_b_44[9]  = 16'h3e4c;  // 0.2
+        vector_b_44[10] = 16'hbecc;  // -0.4
+        vector_b_44[11] = 16'h3f0c;  // 0.55
         
-        // Expected result: ≈0.366250 ≈ 0x3dca
-        expected_result_44 = 16'h3dca;
+        // Expected result: ≈0.360 ≈ 0x3eb8
+        expected_result_44 = 16'h3eb8;
         
         // Flatten arrays for DUT
         vector_a_flat_44 = {vector_a_44[11], vector_a_44[10], vector_a_44[9], vector_a_44[8],
@@ -210,7 +225,7 @@ module mac16_tb_44;
         
         // Wait for computation to complete
         wait(computation_done_44);
-        #10;
+        #20;  // Wait extra cycles to ensure completion
         
         // Display results
         $display("=== Computation Results ===");

@@ -65,38 +65,38 @@ module floating_point_multiplier_tb;
         // Test 2: Zero multiplication
         run_test("Test 2: Zero multiplication",
                  12'b000000000000,  // 0.0
-                 12'b001111100000,  // 1.0
+                 12'b001111000000,  // 1.0
                  12'b000000000000); // 0.0
         
-        // Test 3: Sign test (positive * negative)
+        // Test 3: Sign test (positive * negative = negative)
         run_test("Test 3: Sign test (pos * neg)",
                  12'b001111000000,  // +1.0
                  12'b101111000000,  // -1.0
                  12'b101111000000); // -1.0
         
-        // Test 4: Sign test (negative * negative)  
+        // Test 4: Sign test (negative * negative = positive)  
         run_test("Test 4: Sign test (neg * neg)",
                  12'b101111000000,  // -1.0
                  12'b101111000000,  // -1.0
                  12'b001111000000); // +1.0
         
-        // Test 5: Small * Small (underflow test) - This was failing
+        // Test 5: Small * Small (underflow test) - This was failing in problem statement
         run_test("Test 5: Small * Small (underflow test)",
-                 12'b000010100000,  // exp=2(-13), small number
-                 12'b000010100000,  // exp=2(-13), small number  
-                 12'b000000000000); // Should underflow to 0, not saturate
+                 12'b000010000000,  // exp=2(-13), small number: 2^(-13) * 1.0
+                 12'b000010000000,  // exp=2(-13), small number: 2^(-13) * 1.0  
+                 12'b000000000000); // Should underflow to 0: exp would be 2+2-15=-11 < 0
         
         // Test 6: Large * Large (overflow test)
         run_test("Test 6: Large * Large (overflow test)",
-                 12'b011101110000,  // exp=29(+14), large number
-                 12'b011101110000,  // exp=29(+14), large number
-                 12'b011110110000); // Should saturate
+                 12'b011101000000,  // exp=29(+14), large number
+                 12'b011101000000,  // exp=29(+14), large number
+                 12'b011110110000); // Should saturate to max value
         
-        // Test 7: Max exp * 1.0 - This was failing  
+        // Test 7: Max exp * 1.0 - This was failing in problem statement  
         run_test("Test 7: Max exp * 1.0",
                  12'b011101000000,  // exp=29(+14), max valid exp  
                  12'b001111000000,  // exp=15(bias), frac=000000 = 1.0
-                 12'b011101000000); // Should preserve max exp, not saturate
+                 12'b011101000000); // Should preserve max exp: 29+15-15=29, not saturate
         
         // Test 8: 1.0 * Max exp (commutative check)
         run_test("Test 8: 1.0 * Max exp (commutative check)",
@@ -108,13 +108,13 @@ module floating_point_multiplier_tb;
         run_test("Test 9: Fractional multiplication",
                  12'b001111010000,  // exp=15, frac=010000 = 1.25
                  12'b001111010000,  // exp=15, frac=010000 = 1.25
-                 12'b001111100100); // Should be approximately 1.5625
+                 12'b001111100100); // 1.25*1.25=1.5625: exp=15, frac should be 100100
         
         // Test 10: Edge case - minimum normalized * 1.0
         run_test("Test 10: Min normalized * 1.0",
                  12'b000001000000,  // exp=1(-14), minimum normalized
                  12'b001111000000,  // 1.0
-                 12'b000001000000); // Should preserve minimum normalized
+                 12'b000001000000); // Should preserve minimum normalized: 1+15-15=1
         
         // Test 11: Denormalized input (exp=0) should be treated as zero
         run_test("Test 11: Denormalized input",
@@ -146,10 +146,10 @@ module floating_point_multiplier_tb;
         b = input_b;
         valid_in = 1;
         
-        // Wait for result - simplified approach with proper timing
+        // Wait for result - pipeline produces output on same cycle as valid_in
         @(posedge clk);
-        valid_in = 0;
         #1; // Small delay to let values settle
+        valid_in = 0;
         
         // Check result
         if (result == expected) begin

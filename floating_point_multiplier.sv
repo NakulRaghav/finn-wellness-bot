@@ -5,8 +5,8 @@
 module floating_point_multiplier (
     input  wire         clk,
     input  wire         rst_n,
-    input  wire [11:0]  a,      // First operand
-    input  wire [11:0]  b,      // Second operand
+    input  wire [11:0]  a,      
+    input  wire [11:0]  b,      
     input  wire         valid_in,
     output reg  [11:0]  result,
     output reg          valid_out
@@ -14,10 +14,8 @@ module floating_point_multiplier (
 
     // Constants
     parameter BIAS = 15;
-    parameter SATURATION_VALUE = 12'b011110110000; // exp=30, mantissa=110000
-    parameter ZERO_VALUE = 12'b000000000000;
 
-    // Internal wires and registers
+    // Internal signals
     wire        sign_a, sign_b;
     wire [4:0]  exp_a, exp_b;
     wire [5:0]  frac_a, frac_b;
@@ -53,34 +51,30 @@ module floating_point_multiplier (
     // Combinational logic for multiplication
     always @(*) begin
         if (zero_input) begin
-            mult_result = ZERO_VALUE;
+            mult_result = 12'b000000000000;
         end else begin
             // Calculate result sign
             sign_result = sign_a ^ sign_b;
             
-            // Calculate exponent using signed arithmetic - handle signed properly
+            // Calculate exponent using signed arithmetic
             result_exp_temp = $signed({3'b000, exp_a}) + $signed({3'b000, exp_b}) - $signed({3'b000, 5'd15});
             
-            // Handle normalization - check MSB of fraction product
+            // Handle normalization
             if (frac_mult_result[13] == 1'b1) begin
-                // Product is >= 2.0, need to shift right and increment exponent
                 final_frac = frac_mult_result[12:7];
                 result_exp_temp = result_exp_temp + 1;
             end else begin
-                // Product is < 2.0, take lower bits
                 final_frac = frac_mult_result[11:6];
             end
             
-            // Check for underflow (exponent <= 0)  
+            // Check for underflow and overflow
             underflow = (result_exp_temp <= 8'sd0);
-            
-            // Check for overflow (exponent >= 30)
             overflow = (result_exp_temp >= 8'sd30);
             
             if (underflow) begin
-                mult_result = ZERO_VALUE;
+                mult_result = 12'b000000000000;
             end else if (overflow) begin
-                mult_result = SATURATION_VALUE;
+                mult_result = 12'b011110110000; // Saturation value
             end else begin
                 final_exp = result_exp_temp[4:0];
                 mult_result = {sign_result, final_exp, final_frac};
@@ -88,7 +82,7 @@ module floating_point_multiplier (
         end
     end
 
-    // Sequential logic for pipeline
+    // Sequential logic
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             result <= 12'b0;

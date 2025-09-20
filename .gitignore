@@ -1,0 +1,39 @@
+# SystemVerilog simulation files
+*.vcd
+*_sim
+*.log
+obj_dir/
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Build artifacts  
+*.o
+*.so
+*.a
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
